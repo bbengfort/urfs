@@ -117,8 +117,8 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 		return nil
 	}
 
-	// Allocate 10000 workers
-	for w := 0; w < 10000; w++ {
+	// Allocate 5000 workers
+	for w := 0; w < 5000; w++ {
 		g.Go(worker)
 	}
 
