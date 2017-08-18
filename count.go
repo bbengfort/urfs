@@ -62,5 +62,8 @@ func (s *DirSize) Mean() float64 {
 
 // String returns a string representation of the size
 func (s *DirSize) String() string {
-	return fmt.Sprintf("%s: %d files %d bytes (%0.0f bytes/file)", s.Path, s.Files, s.Bytes, s.Mean())
+	return fmt.Sprintf(
+		"%s: %d files %d bytes (%0.0f bytes/file)",
+		s.Path, s.Files, s.Bytes, s.Mean(),
+	)
 }
