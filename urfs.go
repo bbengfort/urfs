@@ -1,15 +1,17 @@
-// Package urfs provides utilities for creating a uniform random sample of
-// files from a directory by walking the directory concurrently.
+// Package urfs provides utilities for rapidly walking a file system
+// directory using go concurrency in order to apply a function to discovered
+// paths. The original application using this methodology was a uniform
+// random sample of files in a directory, but this package has been expanded
+// to include other utilities such as search and file size distribution.
 package urfs
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -43,6 +45,7 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 	// Create a buffered channel to collect paths on
 	paths := make(chan string, 1000)
 	results := make(chan string, 1000)
+	var total uint64
 
 	// Launch the group of goroutines
 	g.Go(func() error {
@@ -67,6 +70,9 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 				return nil
 			}
 
+			// Increment the total
+			atomic.AddUint64(&total, 1)
+
 			select {
 			case paths <- path:
 			case <-ctx.Done():
@@ -77,12 +83,10 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 		})
 	})
 
-	// Allocate go routines to handle discovered files
-	total := 0
-	for path := range paths {
-		p := path
-		total++
-		g.Go(func() error {
+	// Create a worker function
+	worker := func() error {
+		for path := range paths {
+			p := path
 			if rand.Float64() <= size {
 				// Get the relative path from the base
 				rel, err := filepath.Rel(src, p)
@@ -109,9 +113,13 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 					return ctx.Err()
 				}
 			}
+		}
+		return nil
+	}
 
-			return nil
-		})
+	// Allocate 10000 workers
+	for w := 0; w < 10000; w++ {
+		g.Go(worker)
 	}
 
 	// Wait for the group to complete then close the results channel
@@ -129,42 +137,4 @@ func Sample(ctx context.Context, src, dst string, size float64) error {
 	pcent := float64(sampled) / float64(total) * 100.0
 	fmt.Printf("sampled %d out of %d files (%0.1f%%) in %s\n", sampled, total, pcent, time.Since(started))
 	return g.Wait()
-}
-
-// Mkdir makes the directory if the path doesn't exist.
-func Mkdir(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return os.MkdirAll(path, 0755)
-	}
-	return nil
-}
-
-// CopyFile copies the contents from src to dst atomically.
-// If dst does not exist, CopyFile creates it with permissions perm.
-// If the copy fails, CopyFile aborts and dst is preserved.
-func CopyFile(dst, src string, perm os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	tmp, err := ioutil.TempFile(filepath.Dir(dst), "")
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(tmp, in)
-	if err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err = os.Chmod(tmp.Name(), perm); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), dst)
 }

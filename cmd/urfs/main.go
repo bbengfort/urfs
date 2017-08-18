@@ -23,7 +23,7 @@ func main() {
 	// Instantiate the command line application
 	app := cli.NewApp()
 	app.Name = "urfs"
-	app.Version = "0.1"
+	app.Version = "0.2"
 	app.Usage = "uniform random sample of files in a directory"
 	app.ArgsUsage = "src dst"
 
